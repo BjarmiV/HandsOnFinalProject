@@ -11,6 +11,13 @@ volatile int sampleIndex = 0; // Index for current sample
 int sineWave[numSamples]; // Array to store sine wave samples
 int tickcounter;
 volatile float readval = 0.0; // value read from ADC
+int counter = 0;
+volatile float midpoint = 511.5;
+volatile float below_midpoint = 0.0;
+volatile float above_midpoint = 0.0;
+float prev_val = 0.0;
+float time_after_zero_crossing =0.0;
+
 
 //param for lowpass implementation
 volatile float filteredread = 0.0; // filtered value (read from ADC)
@@ -44,16 +51,34 @@ void setup() {
 }
 
 void loop() {
+     Serial.println(counter);
 
-  Serial.println(readval);
+ 
 
 }
 
 void TickTock() {
   tickcounter++;
   
-  readval = analogRead(ADC_PIN);
-  filteredread = alpha*readval + (1-alpha)*filteredread;
+  readval = analogRead(ADC_PIN); //from signal generator
+  filteredread = alpha*readval + (1-alpha)*filteredread; //from arduino
+ 
+  if((prev_val < midpoint) && (filteredread > midpoint)){
+     counter++;
+     below_midpoint = prev_val;
+     above_midpoint = filteredread;
+     time_after_zero_crossing = filteredread/(filteredread - prev_val);
+     
+  }
+  else if ((prev_val > midpoint) && (filteredread < midpoint)){
+    below_midpoint = filteredread;
+    above_midpoint = prev_val;
+    time_after_zero_crossing = filteredread/(filteredread - prev_val);
+    counter++;
+  }
+    prev_val = filteredread;    
+
+  
   analogWrite(DAC_PIN, filteredread);
 }
 
