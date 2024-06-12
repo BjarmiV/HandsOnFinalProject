@@ -2,22 +2,32 @@
 #include <Arduino.h>
 #include <math.h>
 
+bool changer = LOW;
 const int DAC_PIN = A0;
 const int ADC_PIN = A1;
 const int numSamples = 100; // Number of samples per sine wave cycle
 const int targetFrequency = 50; // Target frequency in Hz
 const int sampleRate = 10000; // Sample rate in Hz
+float sampleRateReal = 10920.0;  //See digital writes in interrupt handler. 
 volatile int sampleIndex = 0; // Index for current sample
 int sineWave[numSamples]; // Array to store sine wave samples
-int tickcounter;
+volatile int tickcounter;
 volatile float readval = 0.0; // value read from ADC
-int counter = 0;
-volatile float midpoint = 511.5;
-volatile float below_midpoint = 0.0;
-volatile float above_midpoint = 0.0;
-float prev_val = 0.0;
-float time_after_zero_crossing =0.0;
 
+//param for zero-crossing
+volatile int counter = 0;
+float prev_val = 0.0;
+unsigned long time_after_zero_crossing = 0;
+unsigned long last_time_crossing = 0;
+volatile unsigned long lastCrossingTime = 0;
+volatile unsigned long currentCrossingTime = 0;
+float frequency1 = 0.0;
+unsigned long frequency2 = 0.0;
+
+// random
+float max_read = 0.0;
+float min_read = 100.0;
+float midpoint = 0.0;
 
 //param for lowpass implementation
 volatile float filteredread = 0.0; // filtered value (read from ADC)
@@ -30,19 +40,15 @@ float alpha = samplePeriod / (RC + samplePeriod);  //alpha constant for lowpass 
 
 
 void setup() {
-  /*const float pi2 = 2*3.14;
-  
-  // Compute sine wave samples for 10-bit DAC
-  for (int i = 0; i < numSamples; i++) {
-    sineWave[i] = (int)(511.5 + 511.5 * sin(2 * PI * i / numSamples)); // Generate samples from 0 to 1023
-  }*/
 
-  // Initialize DAC pin
+  // Initialize DAC
   analogWriteResolution(10); // Set DAC resolution to 10 bits
 
   // Initialize Timer5
   MyTimer5.begin(sampleRate);
   MyTimer5.attachInterrupt(TickTock);
+  //pinMode(2, OUTPUT);  //Use for debugging interrupt handler.
+  //digitalWrite(2, HIGH);
 
   AdcBooster();
 
@@ -51,35 +57,49 @@ void setup() {
 }
 
 void loop() {
-     Serial.println(counter);
 
+     if (counter >= 1000){
+    frequency1 = (counter / (tickcounter / sampleRateReal) / 2.0);
+    tickcounter = 0;
+    counter = 0;
+    
+    
+  }
+
+     //Serial.println(frequency1);
+     
  
 
 }
 
 void TickTock() {
+  //digitalWrite(2, HIGH); // use with lowest write. To debug if Handler is doing too much.
   tickcounter++;
   
   readval = analogRead(ADC_PIN); //from signal generator
   filteredread = alpha*readval + (1-alpha)*filteredread; //from arduino
+
+
+  if (filteredread > max_read){
+    max_read = filteredread;
+  }
+  if (filteredread < min_read){
+    min_read = filteredread;
+  }
+  midpoint = (max_read - min_read) / 2;
  
   if((prev_val < midpoint) && (filteredread > midpoint)){
      counter++;
-     below_midpoint = prev_val;
-     above_midpoint = filteredread;
-     time_after_zero_crossing = filteredread/(filteredread - prev_val);
-     
   }
-  else if ((prev_val > midpoint) && (filteredread < midpoint)){
-    below_midpoint = filteredread;
-    above_midpoint = prev_val;
-    time_after_zero_crossing = filteredread/(filteredread - prev_val);
-    counter++;
+  else if((prev_val > midpoint) && (filteredread < midpoint)){
+     counter++;
   }
+  
     prev_val = filteredread;    
-
   
   analogWrite(DAC_PIN, filteredread);
+
+  //digitalWrite(2, LOW);  // use with most above in Handler. For debugging.
 }
 
 void AdcBooster()
