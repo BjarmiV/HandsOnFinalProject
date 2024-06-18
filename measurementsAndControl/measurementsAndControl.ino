@@ -1,6 +1,7 @@
 #include <Timer5.h>
 #include <Arduino.h>
 #include <math.h>
+#include <LiquidCrystal.h>
 
 //Pin assignments
 const int DAC_PIN = A0;
@@ -10,6 +11,16 @@ const int RED_LED = 0;
 const int GREEN_LED = 1;
 const int YELLOW_LED = 3;
 const int DEBUG_IRQ_PIN = 2;
+//LCD pins
+const int DB7 = 4;
+const int DB6 = 5;
+const int DB5 = 6;
+const int DB4 = 8;
+const int RS = 9;
+const int E = 10;
+
+//LCD initialization
+LiquidCrystal lcd(RS, E, DB4, DB5, DB6, DB7);
 
 //param for 
 bool changer = LOW;
@@ -24,11 +35,13 @@ volatile float readval = 0.0; // value read from ADC
 
 //param for zero-crossing and interpolation
 volatile int counter = 0;
+volatile int frequencyCount = 0;
 float prev_val = 0.0;
 volatile unsigned long lastCrossingTime = 0;
 float currentCrossingTime = 0.0;
 float frequency1 = 0.0;
-unsigned long frequency2 = 0.0;
+float frequency2[50];
+float frequencySum = 0.0;
 
 //param for RMS voltage
 volatile float VREF = 1.0; // DAC voltage reference
@@ -38,7 +51,7 @@ volatile unsigned long SoS = 0; // sum of squares
 volatile float meanSquare = 0.0; // mean square product
 volatile float rmsVADC = 0.0;  // RMS Vol tage from ADC
 volatile int sampleCount = 0; //Counts samples taken for RMS
-const unsigned long DCOFFSET = 0.9; //DC offset set on Wavegen (V)
+const float DCOFFSET = 0.9; //DC offset set on Wavegen (V)
 
 //param for midpoint calculation
 float max_read = 0.0;
@@ -93,30 +106,44 @@ void setup() {
 
  Serial.begin(9600); 
 
+ 
+ lcd.begin(16,2);
+
   
 }
 
 void loop() {
 
-
     //counts 400 zerocrossings
-     if (counter >= 400){
-    // Frequency calculation
-    frequency1 = (counter / (tickcounter / sampleRateReal) / 2.0);
+    if (counter >= 600){
+          // Frequency calculation
+        frequencyCount++;;
+        if (frequencyCount <= 50){
+          frequency2[frequencyCount-1] = (counter / ((tickcounter / sampleRateReal)));
+          //frequency2[frequencyCount-1] = 1.0 / (((float)(currentCrossingTime) / sampleRateReal) * counter);
+        }
+        frequencySum = 0.0;
+        for (int i = 0; i < 50; i++) {
+          frequencySum += frequency2[i];
+        }
+        frequency1 = frequencySum;
+        frequencyCount = 0;
+      
+   // frequency1 = frequency2 / frequencyCount
     //RMS Voltage calculation
-    meanSquare = (float)SoS / sampleCount;
-    rmsVADC = sqrt(meanSquare);
-    VDAC = (rmsVADC / 1023.0) * VREF * (VMAX / VREF); 
+      meanSquare = (float)SoS / sampleCount;
+      rmsVADC = sqrt(meanSquare);
+      VDAC = (rmsVADC / 1023.0) * VREF * (VMAX / VREF); 
     //Resetting counters and sums
-    tickcounter = 0;
-    counter = 0;
-    SoS = 0;
-    sampleCount = 0;
+      tickcounter = 0;
+      counter = 0;
+      SoS = 0;
+      sampleCount = 0;
     
     
   }
-  if (tickcounter >= 1000){
-    //calculating PWM duty cycle and current - every 100 ms. 
+  if (tickcounter >= 300){
+    //calculating PWM duty cycle and current.
     current = (frequency1 - 49.88) / 0.0027;
 
     //current switch statement which deterines dutycycle
@@ -159,13 +186,14 @@ void loop() {
     }
   }
 
-  
+  //LCD update
+  LCD_update(frequency1, VDAC);
 
-     /*Serial.print(rmsVoltageADC);
+     Serial.println(DCOFFSET);
+     /*Serial.print("  ");
+     Serial.print(frequencySum);
      Serial.print("  ");*/
-     Serial.print(current);
-     Serial.print("  ");
-     Serial.println(frequency1, 3);
+     Serial.println(VDAC, 3);
      /*Serial.println(frequency1, 4);
      if (frequency1 < 49.975){
       digitalWrite(1, LOW);
@@ -174,7 +202,19 @@ void loop() {
       digitalWrite(1, HIGH);
      }*/
      
-    
+       
+}
+
+void LCD_update(float freq, float volt){
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("Freq: ");
+  lcd.print((float)(((int)(freq * 100.0)) / 100.0));
+  lcd.print(" Hz");
+  lcd.setCursor(0,1);
+  lcd.print("V_RMS: ");
+  lcd.print(volt);
+  lcd.print(" V");
 }
 
 void TickTock() {
@@ -185,10 +225,9 @@ void TickTock() {
   filteredread = alpha*readval + (1-alpha)*filteredread; //from arduino
   if (tickcounter % 10 == 0){
     sampleCount++;
-    SoS += (unsigned long)((readval-DCOFFSET) * (readval-DCOFFSET)); //sum of squares (inside square) here for unfiltered (just to compare with oscilloscope).
+    SoS += ((readval-DCOFFSET) * (readval-DCOFFSET)); //sum of squares (inside square) here for unfiltered (just to compare with oscilloscope).
   }
   
-
 
   if (filteredread > max_read){
     max_read = filteredread;
@@ -196,15 +235,14 @@ void TickTock() {
   if (filteredread < min_read){
     min_read = filteredread;
   }
-  midpoint = (max_read - min_read) / 2;
+  midpoint = ((max_read - min_read) / 2);
  
   if((prev_val < midpoint) && (filteredread > midpoint)){
      counter++;
-     
-  }
+  }/*
   else if((prev_val > midpoint) && (filteredread < midpoint)){
      counter++;
-  }
+  }*/
   
   prev_val = filteredread; 
   //analogWrite(DAC_PIN, filteredread);
