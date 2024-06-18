@@ -32,6 +32,7 @@ volatile int sampleIndex = 0; // Index for current sample
 int sineWave[numSamples]; // Array to store sine wave samples
 volatile int tickcounter;
 volatile float readval = 0.0; // value read from ADC
+volatile float test = 0.0;
 
 //param for zero-crossing and interpolation
 volatile int counter = 0;
@@ -51,7 +52,7 @@ volatile unsigned long SoS = 0; // sum of squares
 volatile float meanSquare = 0.0; // mean square product
 volatile float rmsVADC = 0.0;  // RMS Vol tage from ADC
 volatile int sampleCount = 0; //Counts samples taken for RMS
-const float DCOFFSET = 0.9; //DC offset set on Wavegen (V)
+volatile float DCOFFSET = 0.9; //DC offset set on Wavegen (V)
 
 //param for midpoint calculation
 float max_read = 0.0;
@@ -115,15 +116,15 @@ void setup() {
 void loop() {
 
     //counts 400 zerocrossings
-    if (counter >= 600){
+    if (counter >= 400){
           // Frequency calculation
         frequencyCount++;;
-        if (frequencyCount <= 50){
+        if (frequencyCount <= 20){
           frequency2[frequencyCount-1] = (counter / ((tickcounter / sampleRateReal)));
           //frequency2[frequencyCount-1] = 1.0 / (((float)(currentCrossingTime) / sampleRateReal) * counter);
         }
         frequencySum = 0.0;
-        for (int i = 0; i < 50; i++) {
+        for (int i = 0; i < 20; i++) {
           frequencySum += frequency2[i];
         }
         frequency1 = frequencySum;
@@ -189,10 +190,12 @@ void loop() {
   //LCD update
   LCD_update(frequency1, VDAC);
 
-     Serial.println(DCOFFSET);
-     /*Serial.print("  ");
-     Serial.print(frequencySum);
-     Serial.print("  ");*/
+     Serial.print(DCOFFSET);
+     Serial.print("  ");
+     Serial.print(readval);
+     Serial.print("  ");
+     Serial.print(readval - 0.9);
+     Serial.print("  ");
      Serial.println(VDAC, 3);
      /*Serial.println(frequency1, 4);
      if (frequency1 < 49.975){
@@ -225,7 +228,7 @@ void TickTock() {
   filteredread = alpha*readval + (1-alpha)*filteredread; //from arduino
   if (tickcounter % 10 == 0){
     sampleCount++;
-    SoS += ((readval-DCOFFSET) * (readval-DCOFFSET)); //sum of squares (inside square) here for unfiltered (just to compare with oscilloscope).
+    SoS += ((readval - midpoint) * (readval - midpoint)); //sum of squares (inside square) here for unfiltered (just to compare with oscilloscope).  
   }
   
 
