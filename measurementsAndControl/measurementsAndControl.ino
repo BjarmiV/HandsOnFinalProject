@@ -7,9 +7,9 @@
 const int DAC_PIN = A0;
 const int ADC_PIN = A1;
 const int PWM_PIN = A3;
-const int RED_LED = 0;
-const int GREEN_LED = 1;
-const int YELLOW_LED = 3;
+const int rED_LED = 0;
+const int gREEN_LED = 1;
+const int yELLOW_LED = 3;
 const int DEBUG_IRQ_PIN = 2;
 //LCD pins
 const int DB7 = 4;
@@ -32,7 +32,6 @@ volatile int sampleIndex = 0; // Index for current sample
 int sineWave[numSamples]; // Array to store sine wave samples
 volatile int tickcounter;
 volatile float readval = 0.0; // value read from ADC
-volatile float test = 0.0;
 
 //param for zero-crossing and interpolation
 volatile int counter = 0;
@@ -46,13 +45,13 @@ float frequencySum = 0.0;
 
 //param for RMS voltage
 volatile float VREF = 1.0; // DAC voltage reference
-volatile float VDAC = 0.0; //Voltage from DAC
+volatile float vDAC = 0.0; //Voltage from DAC
 volatile float VMAX = 3.3; //max voltage
 volatile unsigned long SoS = 0; // sum of squares
 volatile float meanSquare = 0.0; // mean square product
 volatile float rmsVADC = 0.0;  // RMS Vol tage from ADC
 volatile int sampleCount = 0; //Counts samples taken for RMS
-volatile float DCOFFSET = 0.9; //DC offset set on Wavegen (V)
+const float DCOFFSET = 0.9; //DC offset set on Wavegen (V)
 
 //param for midpoint calculation
 float max_read = 0.0;
@@ -95,9 +94,9 @@ void setup() {
   MyTimer5.begin(sampleRate);
   MyTimer5.attachInterrupt(TickTock);
   pinMode(DEBUG_IRQ_PIN, OUTPUT);  //Use for debugging interrupt handler.
-  pinMode(GREEN_LED, OUTPUT);
-  pinMode(YELLOW_LED, OUTPUT);
-  pinMode(RED_LED, OUTPUT);
+  pinMode(gREEN_LED, OUTPUT);
+  pinMode(yELLOW_LED, OUTPUT);
+  pinMode(rED_LED, OUTPUT);
   pinMode(PWM_PIN, OUTPUT);
   digitalWrite(DEBUG_IRQ_PIN, HIGH);
   pinMode(3, OUTPUT);
@@ -115,31 +114,43 @@ void setup() {
 
 void loop() {
 
-    //counts 400 zerocrossings
-    if (counter >= 400){
-          // Frequency calculation
-        frequencyCount++;;
-        if (frequencyCount <= 20){
-          frequency2[frequencyCount-1] = (counter / ((tickcounter / sampleRateReal)));
-          //frequency2[frequencyCount-1] = 1.0 / (((float)(currentCrossingTime) / sampleRateReal) * counter);
-        }
-        frequencySum = 0.0;
-        for (int i = 0; i < 20; i++) {
-          frequencySum += frequency2[i];
-        }
-        frequency1 = frequencySum;
-        frequencyCount = 0;
-      
-   // frequency1 = frequency2 / frequencyCount
-    //RMS Voltage calculation
-      meanSquare = (float)SoS / sampleCount;
-      rmsVADC = sqrt(meanSquare);
-      VDAC = (rmsVADC / 1023.0) * VREF * (VMAX / VREF); 
-    //Resetting counters and sums
-      tickcounter = 0;
-      counter = 0;
-      SoS = 0;
-      sampleCount = 0;
+   if (counter >= 600) {
+    // Frequency calculation
+    frequencyCount++;
+    if (frequencyCount <= 50) {
+        frequency2[frequencyCount-1] = (counter / ((tickcounter / sampleRateReal)));
+    }
+    frequencySum = 0.0;
+    for (int i = 0; i < 50; i++) {
+        frequencySum += frequency2[i];
+    }
+    frequency1 = frequencySum;
+    frequencyCount = 0;
+
+    // RMS Voltage calculation
+    meanSquare = (float)SoS / sampleCount;
+    rmsVADC = sqrt(meanSquare);
+    vDAC = (rmsVADC / 1023.0) * VREF * (VMAX / VREF);
+
+    // Debugging prints
+    Serial.print("SoS: ");
+    Serial.println(SoS);
+    Serial.print("sampleCount: ");
+    Serial.println(sampleCount);
+    Serial.print("meanSquare: ");
+    Serial.println(meanSquare);
+    Serial.print("rmsVADC: ");
+    Serial.println(rmsVADC);
+    Serial.print("vDAC: ");
+    Serial.println(vDAC);
+
+    // Resetting counters and sums
+    tickcounter = 0;
+    counter = 0;
+    SoS = 0;
+    sampleCount = 0;
+}
+
     
     
   }
@@ -171,32 +182,30 @@ void loop() {
   // updating LEDs based on frequency  
   if (tickcounter >= 250){
     if ((frequency1 >= 49.9) && (frequency1 <= 50.1)){
-      digitalWrite(GREEN_LED, HIGH);
-      digitalWrite(RED_LED, LOW);
-      digitalWrite(YELLOW_LED, LOW);
+      digitalWrite(gREEN_LED, HIGH);
+      digitalWrite(rED_LED, LOW);
+      digitalWrite(yELLOW_LED, LOW);
     }
     else if (frequency1 < 49.9){
-      digitalWrite(GREEN_LED, LOW);
-      digitalWrite(RED_LED, LOW);
-      digitalWrite(YELLOW_LED, HIGH);
+      digitalWrite(gREEN_LED, LOW);
+      digitalWrite(rED_LED, LOW);
+      digitalWrite(yELLOW_LED, HIGH);
     }
     else if (frequency1 > 50.1){
-      digitalWrite(GREEN_LED, LOW);
-      digitalWrite(RED_LED, HIGH);
-      digitalWrite(YELLOW_LED, LOW);
+      digitalWrite(gREEN_LED, LOW);
+      digitalWrite(rED_LED, HIGH);
+      digitalWrite(yELLOW_LED, LOW);
     }
   }
 
   //LCD update
-  LCD_update(frequency1, VDAC);
+  LCD_update(frequency1, vDAC);
 
-     Serial.print(DCOFFSET);
-     Serial.print("  ");
-     Serial.print(readval);
-     Serial.print("  ");
-     Serial.print(readval - 0.9);
-     Serial.print("  ");
-     Serial.println(VDAC, 3);
+     Serial.println(DCOFFSET);
+     /*Serial.print("  ");
+     Serial.print(frequencySum);
+     Serial.print("  ");*/
+     Serial.println(vDAC, 3);
      /*Serial.println(frequency1, 4);
      if (frequency1 < 49.975){
       digitalWrite(1, LOW);
@@ -228,7 +237,7 @@ void TickTock() {
   filteredread = alpha*readval + (1-alpha)*filteredread; //from arduino
   if (tickcounter % 10 == 0){
     sampleCount++;
-    SoS += ((readval - midpoint) * (readval - midpoint)); //sum of squares (inside square) here for unfiltered (just to compare with oscilloscope).  
+    SoS += ((readval-DCOFFSET) * (readval-DCOFFSET)); //sum of squares (inside square) here for unfiltered (just to compare with oscilloscope).
   }
   
 
